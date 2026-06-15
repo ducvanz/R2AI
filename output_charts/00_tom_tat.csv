@@ -1,0 +1,19 @@
+﻿Cột,Kiểu,Null,Duy nhất,Giá trị phổ biến nhất
+subject_id,object,0,202,9d9a7001-0799-4bd8-8c31-964f9a7b9603
+topic_id,object,0,42,965fd0b7-e8b0-434a-83c2-9f9b2b4fbcba
+topic_number,int64,0,42,39
+topic_title,object,0,42,"Trật tự, an toàn xã hội"
+subject_number,int64,0,15,4
+subject_title,object,0,202,Xử lý vi phạm hành chính
+article_anchor,object,0,64414,#2400900000000000500002350249100068000040
+article_title,object,0,64393,Điều 22.4.TT.39.39.2. Trách nhiệm tổ chức thực hiện
+chapter_title,object,0,2503,Chương I - NHỮNG QUY ĐỊNH CHUNG
+source_note_text,object,0,64404,
+source_links,object,0,64416,
+related_note_text,object,0,13979,
+content_text,object,0,63073,
+content_char_len,int64,0,5851,0
+content_word_count,int64,0,2098,16
+source_url,object,0,64414,https://phapdien.moj.gov.vn/TraCuuPhapDien/ViewBoPD.aspx?obj
+scraped_at,object,0,1,2026-05-08T15:49:05+00:00
+split,object,0,1,train

@@ -1,0 +1,99 @@
+======================================================================
+  BÁO CÁO LỌC DỮ LIỆU PHÁP ĐIỂN — CHỦ ĐỀ DOANH NGHIỆP
+======================================================================
+  File gốc     : phapdien_cache.parquet  (64,464 bản ghi)
+  File kết quả : data_business.parquet
+
+  ✅ Giữ lại   : 37,078  (57.5%)
+  ❌ Loại bỏ   : 27,386  (42.5%)
+
+── PHÂN TẦNG CHI TIẾT ───────────────────────────────────────────
+  keep_topic    đề mục chắc chắn liên quan DN    :   24,034
+  keep_article  điều luật cụ thể liên quan DN    :   13,044
+  drop_topic    đề mục chắc chắn không liên quan :    6,025
+  drop_article  điều luật không liên quan        :   21,361
+
+── ĐỀ MỤC ĐƯỢC GIỮ (top 40) ────────────────────────────────────
+  [2,080]  Xử lý vi phạm hành chính           › Trật tự, an toàn xã hội
+  [1,716]  Ngân hàng Nhà nước Việt Nam        › Ngân hàng, tiền tệ
+  [1,677]  Hàng hải Việt Nam                  › Giao thông, vận tải
+  [1,664]  Hàng không dân dụng Việt Nam       › Giao thông, vận tải
+  [1,456]  Kế toán                            › Kế toán, kiểm toán
+  [1,296]  Quản lý ngoại thương               › Thương mại, đầu tư, chứng khoán
+  [1,272]  Hải quan                           › Tài chính
+  [1,082]  Công nghệ thông tin                › Bưu chính, viễn thông
+  [1,057]  Một số hoạt động kinh doanh đặc    › Thương mại, đầu tư, chứng khoán
+  [1,032]  Viên chức                          › Cán bộ, công chức, viên chức
+  [1,002]  Chứng khoán                        › Thương mại, đầu tư, chứng khoán
+  [  980]  Phí và lệ phí                      › Thuế, phí, lệ phí, các khoản thu
+  [  930]  Doanh nghiệp                       › Doanh nghiệp, hợp tác xã
+  [  927]  An toàn thực phẩm                  › Y tế, dược
+  [  926]  Giao thông đường thủy nội địa      › Giao thông, vận tải
+  [  838]  Ngoại hối                          › Ngân hàng, tiền tệ
+  [  745]  Quản lý, sử dụng tài sản công      › Tài sản công, nợ công, dự trữ nh
+  [  682]  Thương mại                         › Thương mại, đầu tư, chứng khoán
+  [  680]  Kinh doanh bảo hiểm                › Bảo hiểm
+  [  666]  Quản lý thuế                       › Thuế, phí, lệ phí, các khoản thu
+  [  650]  Dược                               › Y tế, dược
+  [  481]  Hỗ trợ doanh nghiệp nhỏ và vừa     › Doanh nghiệp, hợp tác xã
+  [  477]  Lao động                           › Lao động
+  [  466]  Lâm nghiệp                         › Nông nghiệp, nông thôn
+  [  427]  Bảo hiểm y tế                      › Bảo hiểm
+  [  409]  Tiêu chuẩn và quy chuẩn kỹ thuật   › Khoa học, công nghệ
+  [  408]  Quản lý nợ công                    › Tài sản công, nợ công, dự trữ nh
+  [  393]  Việc làm                           › Lao động
+  [  372]  Hợp tác xã                         › Doanh nghiệp, hợp tác xã
+  [  350]  An toàn, vệ sinh lao động          › Lao động
+  [  275]  Chuyển giao công nghệ              › Khoa học, công nghệ
+  [  266]  Kiểm toán độc lập                  › Kế toán, kiểm toán
+  [  256]  Thủy sản                           › Nông nghiệp, nông thôn
+  [  252]  Thuế xuất khẩu, thuế nhập khẩu     › Thuế, phí, lệ phí, các khoản thu
+  [  235]  Đo lường                           › Khoa học, công nghệ
+  [  235]  Thú y                              › Nông nghiệp, nông thôn
+  [  221]  Thống kê                           › Thống kê
+  [  218]  Bưu chính                          › Bưu chính, viễn thông
+  [  215]  Thể dục, thể thao                  › Văn hóa, thể thao, du lịch
+  [  211]  Quản lý thị trường                 › Thương mại, đầu tư, chứng khoán
+
+── ĐỀ MỤC BỊ LOẠI (top 40) ─────────────────────────────────────
+  [2,242]  Xử lý vi phạm hành chính           › Trật tự, an toàn xã hội
+  [  866]  Tố tụng hình sự                    › Tố tụng và các phương thức giải 
+  [  842]  Thi hành án hình sự                › Thi hành án
+  [  695]  Dân sự                             › Dân sự
+  [  682]  Viên chức                          › Cán bộ, công chức, viên chức
+  [  612]  Tố tụng dân sự                     › Tố tụng và các phương thức giải 
+  [  601]  Đo đạc và bản đồ                   › Tài nguyên
+  [  524]  Tài nguyên, môi trường biển và h   › Tài nguyên
+  [  498]  Thi hành án dân sự                 › Thi hành án
+  [  442]  Dược                               › Y tế, dược
+  [  428]  Thể dục, thể thao                  › Văn hóa, thể thao, du lịch
+  [  426]  Khí tượng thủy văn                 › Tài nguyên
+  [  423]  Công an nhân dân                   › An ninh quốc gia
+  [  417]  Tố tụng hành chính                 › Tố tụng và các phương thức giải 
+  [  405]  Phòng, chống nhiễm vi rút gây ra   › Y tế, dược
+  [  402]  Lâm nghiệp                         › Nông nghiệp, nông thôn
+  [  395]  Hình sự                            › Hình sự
+  [  375]  Thống kê                           › Thống kê
+  [  361]  Ưu đãi người có công với cách mạ   › Chính sách xã hội
+  [  358]  Quản lý, sử dụng tài sản công      › Tài sản công, nợ công, dự trữ nh
+  [  334]  Biên giới quốc gia                 › An ninh quốc gia
+  [  323]  Phòng, chống bệnh truyền nhiễm     › Y tế, dược
+  [  300]  Quốc phòng                         › Quốc phòng
+  [  290]  Giám định tư pháp                  › Bổ trợ tư pháp
+  [  288]  Thủy sản                           › Nông nghiệp, nông thôn
+  [  283]  Đa dạng sinh học                   › Môi trường
+  [  282]  Sĩ quan Quân đội nhân dân Việt N   › Quốc phòng
+  [  279]  Phòng, chống thiên tai             › Nông nghiệp, nông thôn
+  [  272]  Báo chí                            › Thông tin, báo chí, xuất bản
+  [  270]  Thú y                              › Nông nghiệp, nông thôn
+  [  270]  Hoạt động viễn thám                › Tài nguyên
+  [  242]  Tổ chức Quốc hội                   › Tổ chức bộ máy nhà nước
+  [  232]  Trợ giúp pháp lý                   › Bổ trợ tư pháp
+  [  228]  Thực hiện dân chủ ở cơ sở          › Xây dựng pháp luật và thi hành p
+  [  225]  Phòng, chống tham nhũng            › Khiếu nại, tố cáo
+  [  222]  Tố cáo                             › Khiếu nại, tố cáo
+  [  222]  Giáo dục quốc phòng và an ninh     › Quốc phòng
+  [  206]  Khiếu nại                          › Khiếu nại, tố cáo
+  [  201]  An ninh quốc gia                   › An ninh quốc gia
+  [  200]  Dự trữ quốc gia                    › Tài sản công, nợ công, dự trữ nh
+======================================================================
