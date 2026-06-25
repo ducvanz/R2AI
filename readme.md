@@ -5,7 +5,7 @@ Hệ thống hỏi đáp pháp luật doanh nghiệp Việt Nam với **Neural R
 
 ---
 
-## 1. Kiến trúc hệ thống
+## Kiến trúc hệ thống
 
 ```
  Legal Documents
@@ -34,8 +34,7 @@ Hệ thống hỏi đáp pháp luật doanh nghiệp Việt Nam với **Neural R
 ---
 
 
-## 2. Cấu trúc thư mục
-Với mã nguồn hệ thống:
+## Cấu trúc thư mục
 ```
 src
  ├── retrieval_pipeline
@@ -43,27 +42,18 @@ src
  |      ├── Retrieval Layer         # Interfaces cho các lớp BM25, Dense,...
  |      └── Retrieval Pipeline      # Pipeline cuối cùng
  |
- ├── Data Presentation
- |      ├── preprocess_parquet      # Xử lý và json hóa nội dung điều luật
- |      └── data_presentation       # Tổ chức dữ liệu dạng cây             
- | 
  ├── recall_retriever
  |      ├── BM25 Layer        
- |      └── Dense Layer
+ |      ├── Dense Layer
+ |      └── RRF Fusion
  |
  └── precision_retriever
         └── CrossEncoder
 ```
 
-** Lưu ý 1: [requirements.txt](requirements.txt) chỉ dành cho hệ điều hành Linux - Ubuntu =))
-** Lưu ý 2: Nhiều file của branch gốc bị mất trong quá trình báo :v
+** Lưu ý: [requirements.txt](requirements.txt) chỉ dành cho hệ điều hành Linux - Ubuntu =))
 
-Danh sách notebook:
-<ol>
-       <li><a href="Test_Recall.ipynb">Test Recall</a>: Chạy thử Retrieval Pipeline. Bản chi tiết (gen kết quả cho dataset) <a href="https://www.kaggle.com/code/nostagiguideus17/guru-retrieval-pipeline">tại đây</a></li>
-</ol> 
-
-## 3. Giải thích cơ chế:
+## Giải thích cơ chế:
 
 ### BM25 (Recall)
 
@@ -76,8 +66,7 @@ Thì:
 
 Trong đó:
     $$
-    f(t, D) : \text{tần suất term xuất hiện trong document} \\ 
-    len(D).mean : \text{độ dài trung bình của corpus (tokens/văn bản)}
+    f(t, D) : \text{tần suất term xuất hiện trong document}
     $$
 
 ### Dense Retrieval (Recall)
@@ -91,10 +80,7 @@ Vấn đề nhận thấy:
 ### Hierarchy Corpus (Data Chunking):
 
 - Ý tưởng: Phân lớp tài liệu (Điều luật `Article`) thành các form nhỏ hơn (Khoản `Clause` và Điểm `Point`). Nếu lý tưởng, khi chỉ xử lý phần văn bản ở các nhánh là `leaf`, kỹ thuật Retrieval có thể trỏ tới vị trí chính xác của phần nội dung được đánh giá cao (các trường `comment`), và normalize được độ dài văn bản (đối với `BM25`).
-
-- Cấu trúc văn bản sau khi chunking: [minh họa](data/example_processed.json)
-
 - Thực tế implement:
-       - Bị mất thông tin `title`.
+       - Bị mất thông tin `title`
        - Performance không cải thiện so với trước khi chunk.
 

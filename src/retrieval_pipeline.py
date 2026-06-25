@@ -1,10 +1,7 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import pandas as pd
+from .data_presentation import Corpus, RetrievalQuery
 
-@dataclass
-class RetrievalQuery:
-    content: str
 
 class RecallRetrieval(ABC):
     """
@@ -12,8 +9,11 @@ class RecallRetrieval(ABC):
     Yêu cầu phải fit(corpus) trước khi thực hiện bất kỳ forward nào.
     """
 
+    corpus: Corpus
+    name: str
+
     @abstractmethod
-    def fit(self, corpus: pd.DataFrame) -> None:
+    def fit(self) -> None:
         """
         Khởi tạo corpus.
         """
@@ -28,27 +28,46 @@ class RecallRetrieval(ABC):
         """
         pass
 
+    # @abstractmethod
+    # def save(self, folder:str):
+    #     pass
+
+    # @abstractmethod
+    # def load(self, folder:str):
+    #     pass
+
+
 class PrecisionRetrieval(ABC) :
     @abstractmethod
     def forward(self, query: RetrievalQuery, document: pd.DataFrame) -> pd.DataFrame:
         pass
 
+
 class RetrievalPipeline:
 
-    def __init__(self, corpus: pd.DataFrame, 
+    def __init__(self,
+                 data: pd.Series,
                  retrievalLayers: list[RecallRetrieval] = None,
-                 processorLayers: list[PrecisionRetrieval] = None):
-        self.corpus: pd.DataFrame = corpus
+                 processorLayers: list[PrecisionRetrieval] = None
+                 ):
+        
+        self.data: pd.Series = data
         self.recallLayers: list[RecallRetrieval] = retrievalLayers
         self.precisionLayers: list[PrecisionRetrieval] = processorLayers
+        
+        self._load()
 
-        self._load(corpus)
+    def _load(self) :
+        print(f"[INFO] Đang build Corpuses")
+        corpus_set:set[Corpus] = set([x.corpus for x in self.recallLayers])
+        for idx, corpus in enumerate(corpus_set) :
+            print(f"[INFO] [{idx+1}/{len(corpus_set)}] Đang build {type(corpus)}")
+            corpus.fit(self.data)
 
-    def _load(self, corpus: pd.DataFrame) :
-        print(f"[INFO] Đang fit lớp Recall Retrieval")
+        print(f"[INFO] Đang fit lớp Recall Retrievers")
         for idx, retriever in enumerate(self.recallLayers) :
-            print(f"\t [{idx+1}/{len(self.recallLayers)}] Đang fit {type(retriever)} với dữ liệu {retriever.text_column}")
-            retriever.fit(corpus)
+            print(f"[INFO] [{idx+1}/{len(self.recallLayers)}] Đang fit {type(retriever)} với Knowledge Base {type(retriever.corpus)}")
+            retriever.fit()
 
     def retrieve(self, query: str) -> pd.DataFrame:
 
@@ -62,5 +81,9 @@ class RetrievalPipeline:
             for layer in self.recallLayers:
                 sc = layer.forward(query)
                 scores = scores.join(sc, how='outer')
+
+
+        # iLoc recovering
+        scores.index = self.data.index[scores.index]
 
         return scores

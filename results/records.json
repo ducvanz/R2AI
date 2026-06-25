@@ -9,6 +9,14 @@
     "DOCS_RECALL": 0.57
   },
   {
+    "ARTICLES_F2MACRO": 0.1562,
+    "DOCS_F2MACRO": 0.1836,
+    "ARTICLES_PRECISION": 0.046,
+    "ARTICLES_RECALL": 0.4913,
+    "DOCS_PRECISION": 0.0555,
+    "DOCS_RECALL": 0.5067
+  },
+  {
     "note": "top10 BM25 Raw",
     "ARTICLES_F2MACRO": 0.2089,
     "DOCS_F2MACRO": 0.3128,
@@ -45,6 +53,15 @@
     "DOCS_RECALL": 0.6333
   },
   {
+    "note": "top100 BM25 Hierarchy (mean)",
+    "ARTICLES_F2MACRO": 0.119,
+    "DOCS_F2MACRO": 0.0799,
+    "ARTICLES_PRECISION": 0.0286,
+    "ARTICLES_RECALL": 0.815,
+    "DOCS_PRECISION": 0.0182,
+    "DOCS_RECALL": 0.6233
+  },
+  {
     "note": "top100 BM25 Intersection",
     "ARTICLES_F2MACRO": 0.0924,
     "DOCS_F2MACRO": 0.0675,
@@ -64,11 +81,11 @@
   },
   {
     "note": "top100 Dense Hier",
-    "ARTICLES_F2MACRO": 0.1101,
-    "DOCS_F2MACRO": 0.0851,
-    "ARTICLES_PRECISION": 0.0262,
-    "ARTICLES_RECALL": 0.761,
-    "DOCS_PRECISION": 0.0197,
+    "ARTICLES_F2MACRO": 0.1109,
+    "DOCS_F2MACRO": 0.0916,
+    "ARTICLES_PRECISION": 0.0263,
+    "ARTICLES_RECALL": 0.7667,
+    "DOCS_PRECISION": 0.0215,
     "DOCS_RECALL": 0.6333
   },
   {
@@ -96,6 +113,24 @@
     "ARTICLES_PRECISION": 0.0172,
     "ARTICLES_RECALL": 0.86,
     "DOCS_PRECISION": 0.0077,
+    "DOCS_RECALL": 0.6333
+  },
+  {
+    "note": "top300 Dense Hier (leaf)",
+    "ARTICLES_F2MACRO": 0.0765,
+    "DOCS_F2MACRO": 0.0355,
+    "ARTICLES_PRECISION": 0.017,
+    "ARTICLES_RECALL": 0.8667,
+    "DOCS_PRECISION": 0.0075,
+    "DOCS_RECALL": 0.6333
+  },
+  {
+    "note": "top500 Dense Hier",
+    "ARTICLES_F2MACRO": 0.0646,
+    "DOCS_F2MACRO": 0.0229,
+    "ARTICLES_PRECISION": 0.0141,
+    "ARTICLES_RECALL": 0.9,
+    "DOCS_PRECISION": 0.0047,
     "DOCS_RECALL": 0.6333
   }
 ]

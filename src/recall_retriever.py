@@ -1,310 +1,177 @@
-from .retrieval_pipeline import RecallRetrieval, RetrievalQuery
-from .data_presentation import HierarchicalCorpus
-from .preprocess_parquet import restore_article
+from .retrieval_pipeline import RecallRetrieval
+from .data_presentation import Corpus, RetrievalQuery
 import pandas as pd
 import numpy as np
-from rank_bm25 import BM25Okapi
+import bm25s
 import faiss
-
-
-
-BM25_LEN_NORMALIZE = 0.25
 
 
 # -----------------------
 # BM25
 # -----------------------
 
-class BM25Raw(RecallRetrieval):
-    def __init__(self, text_column:str) :
-        self.text_column = text_column
+class BM25(RecallRetrieval):
+
+    def __init__(self, corpus:Corpus, top_k: int = None, norm: float = 0.75, name="BM25"):
+        self.corpus = corpus
+        self.name = name
+
+        self.top_k = top_k
+        self.norm = norm
 
         self.bm25 = None
-        self.doc_indices = None
 
-    def fit(self, documents: pd.DataFrame):
-        corpus_tokens = (
-            documents[self.text_column]
-            .fillna("").astype(str)
-            .str.lower()
-            .str.split()
-            .tolist()
-        )
+    def fit(self):
+        texts = [text.lower() for text in self.corpus.get_contents()]
 
-        self.bm25 = BM25Okapi(
-            corpus_tokens, b=BM25_LEN_NORMALIZE
-        )
+        tokenized = bm25s.tokenize(texts)
 
-        self.doc_indices = (
-            documents.index.to_numpy()
-        )
+        self.bm25 = bm25s.BM25(b=self.norm)
 
-    def forward(self, query:RetrievalQuery):
-
-        if self.bm25 is None:
-            raise RuntimeError(
-                "BM25Layer must be fitted first."
-            )
-
-        query_tokens = (
-            query.content.lower().split()
-        )
-
-        scores = self.bm25.get_scores(query_tokens)
-        column_name = f"bm25_raw_{self.text_column}"
-
-        result = pd.DataFrame({
-            column_name: scores
-        }, index=self.doc_indices)
-
-        return result
-  
-
-class BM25Hier(RecallRetrieval):
-
-    def __init__(self, title_include:bool=True, text_column:str="content_text"):
-        self.map: HierarchicalCorpus = HierarchicalCorpus()
-        self.text_column = text_column
-        self.title_include = title_include
-
-        self.bm25 = None
-        self.doc_indices = None
-
-    def fit(self, documents: pd.DataFrame):
-        """
-        flat_documents:
-            output từ HierarchicalCorpus.fit()
-
-        doc_indices:
-            corpus_df.index
-        """
-        self.doc_indices = documents.index
-        corpus = documents[self.text_column]
-
-        flat_documents = self.map.fit(corpus, self.title_include)
-
-        corpus_tokens = [
-            str(text).lower().split()
-            for text in flat_documents
-        ]
-
-        self.bm25 = BM25Okapi(
-            corpus_tokens, b=BM25_LEN_NORMALIZE
-        )
+        self.bm25.index(tokenized)     
 
     def forward(self, query: RetrievalQuery):
 
         if self.bm25 is None:
             raise RuntimeError(
-                "BM25Hier must be fitted first."
+                "BM25Raw must be fitted first."
             )
 
-        query_tokens = (query.content.lower().split())
-
-        self.map.scoring(
-            self.bm25.get_scores(query_tokens)
+        query_tokens = bm25s.tokenize(
+            [query.content.lower()]
         )
 
-        results: list = []
-        paths: list = []
+        results, scores = self.bm25.retrieve(
+            query_tokens,
+            k=self.top_k or len(self.corpus.get_contents())
+        )
 
-        for i, article in enumerate(self.map.get_root().child) :
-            sc, pt = self.map.max_leaf_score(article)
+        indices, scores = results[0], scores[0]
 
-            results.append(sc)
-            paths.append(pt) 
+        self.corpus.scoring(pd.Series(scores, index=indices))
 
-        return pd.DataFrame({"bm25_hier" : results,
-                             "bm25_Comment" : paths}, 
-                            index=self.doc_indices)
-    
+        df = self.corpus.get_scoreboard()
+        return df.add_prefix(f"{self.name}_")
+
+
 # -----------------------
 # Dense Retrieval
 # -----------------------
 
-class DenseRaw(RecallRetrieval):
+class Dense(RecallRetrieval):
 
-    def __init__(self, model,
-                top_k:int = None,
-                index_type:str="flat",
-                text_column: str = "content_text",
-                batch_size:int = 32
+    def __init__(self, 
+                 corpus: Corpus,
+                 model,
+                 top_k: int = None,
+                 index_type: str = "flat", # Hỗ trợ "flat" hoặc "hnsw"
+                 name: str = "Dense",
+                 batch_size: int = 32,     # Kích thước batch khi embedding
+                 M: int = 32,              # Số lượng neighbor của mỗi node cho HNSW
+                 ef_construction: int = 256,
+                 ef_search: int = 64
         ):
+        """
+        Khởi tạo bộ truy xuất DenseRaw sử dụng kiến trúc Bi-Encoder và FAISS Indexing.
+        Hỗ trợ chuẩn hóa L2 và tìm kiếm bằng Inner Product để tính Cosine Similarity.
 
-        self.text_column = text_column
-        self.top_k = top_k
+        Args:
+            corpus (Corpus): Đối tượng Corpus chứa tập tri thức (Knowledge Base).
+            model: Mô hình Bi-Encoder (thường là instance của SentenceTransformer).
 
-        self.model = model
-        self.index_type = index_type
-        self.batch_size = batch_size
+            top_k (int, optional): Số lượng documents gần nhất cần trả về. 
+                Nếu để None, sẽ chấm điểm và trả về toàn bộ dữ liệu trong corpus.
 
-        self.index = None
-        self.doc_indices = None
-
-    def fit(self, documents: pd.DataFrame):
-        texts = (
-            documents[self.text_column]
-            .fillna("")
-            .apply(restore_article)
-            .tolist()
-        )
-
-        embeddings = self.model.encode(
-            texts,
-            batch_size=self.batch_size,
-            normalize_embeddings=True,
-            show_progress_bar=True,
-            convert_to_numpy=True,
-        )
-
-        embeddings = embeddings.astype(np.float32)
-
-        dim = embeddings.shape[1]
-
-        match self.index_type :
-            case 'hnsw' :
-                self.index = faiss.IndexHNSWFlat(dim, 32)       # Approximate nearest neighbor
-            case 'flat':
-                self.index = faiss.IndexFlatIP(dim)             # Fully search
-            case _ :
-                raise RuntimeError(
-                    "Only support Index type as: flat, hnsw"
-                )
-
-        self.index.add(embeddings)
-
-        self.doc_indices = (
-            documents.index.to_numpy()
-        )
-
-    def forward(self, query: RetrievalQuery):
-
-        if self.index is None:
-            raise RuntimeError(
-                "DenseRaw must be fitted first."
-            )
-
-        query_embedding = self.model.encode(
-            [query.content],
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
-
-        query_embedding = query_embedding.astype(np.float32)
-
-        scores, indices = self.index.search(
-            query_embedding,
-            k = self.top_k or len(self.doc_indices)
-        )
-
-        scores = scores[0]
-        score_indices = indices[0]
-
-        column_name = f"dense_raw_{self.text_column}"
-
-        return pd.DataFrame({
-                column_name: scores
-            },
-            index=self.doc_indices[score_indices]
-        )
+            index_type (str, optional): Phương pháp lưu trữ và tìm kiếm của FAISS. Hỗ trợ 2 chế độ:
+                - "flat": Quét vét cạn (Brute-force) bằng IndexFlatIP. Trả kết quả chính xác 100% 
+                  nhưng chậm nếu corpus quá lớn.
+                - "hnsw": Tìm kiếm xấp xỉ dạng đồ thị (Approximate Nearest Neighbor) bằng IndexHNSWFlat. 
+                  Tốc độ query siêu nhanh cho dữ liệu lớn nhưng cần tốn RAM và thời gian fit đồ thị.
     
-class DenseHier(RecallRetrieval):
+            name (str, optional): Tên định danh của Retriever. Dùng làm prefix cho các cột dataframe
+                kết quả trả về. Mặc định là "Dense".
 
-    def __init__(self, model,
-                top_k:int = None,
-                title_include:bool = True,
-                index_type:str="flat",
-                text_column: str = "content_text",
-                batch_size:int = 32
-        ):
+            batch_size (int, optional): Kích thước batch đưa vào model lúc embedding văn bản ở hàm `fit()`. 
+                Tăng lên nếu GPU có nhiều VRAM để chạy nhanh hơn. Mặc định là 32.
 
-        self.map: HierarchicalCorpus = HierarchicalCorpus()
-        self.text_column = text_column
-        self.top_k = top_k
-        self.title_include = title_include
+            M (int, optional): [Chỉ dùng cho HNSW] Số lượng liên kết hàng xóm liền kề đối với mỗi node đồ thị. 
+                M lớn hơn tốn RAM hơn nhưng tăng tỷ lệ chính xác. Mặc định là 32.
 
+            ef_construction (int, optional): [Chỉ dùng cho HNSW] Kích thước danh sách ứng viên (candidate list) 
+                trong quá trình xây dựng index. Số cao hơn thì đồ thị chất lượng hơn, nhưng tốn thời gian fit(). 
+                Lưu ý: ef_construction >> M để quá trình dựng đồ thị ổn định. 
+                ef_construction > ef_search để đảm bảo đồ thị đủ tốt trong tìm kiếm.
+                Mặc định là 256.
+
+            ef_search (int, optional): [Chỉ dùng cho HNSW] Số lượng node hàng xóm được quét qua khi thực hiện 
+                tìm kiếm. Càng lớn thì query càng chính xác (Recall cao) nhưng tốc độ query sẽ giảm nhẹ. 
+                Lưu ý: ef_search >= top_k để cho kết quả chính xác hơn. Mặc định là 64.
+        """
+
+        self.corpus = corpus
+        self.name = name
         self.model = model
-        self.index_type = index_type
+        self.top_k = top_k
+        self.index_type = index_type.lower()
         self.batch_size = batch_size
-
+        self.M = M
+        self.ef_construction = ef_construction
+        self.ef_search = ef_search
+        
         self.index = None
-        self.doc_indices = None
 
-    def fit(self, documents: pd.DataFrame):
-        corpus = documents[self.text_column]
-
-        flat_documents = self.map.fit(corpus, self.title_include)
-
-        embeddings = self.model.encode(
-            flat_documents,
-            batch_size=self.batch_size,
-            normalize_embeddings=True,
-            show_progress_bar=True,
-            convert_to_numpy=True,
-        )
-
-        embeddings = embeddings.astype(np.float32)
-
-        dim = embeddings.shape[1]
-
-        match self.index_type :
-            case 'hnsw' :
-                self.index = faiss.IndexHNSWFlat(dim, 32)       # Approximate nearest neighbor
-            case 'flat':
-                self.index = faiss.IndexFlatIP(dim)             # Fully search
-            case _ :
-                raise RuntimeError(
-                    "Only support Index type as: flat, hnsw"
-                )
-
+    def fit(self):
+        # Lưu ý: Abstract class RecallRetrieval.fit() không nhận tham số documents.
+        # Dữ liệu lấy trực tiếp từ self.corpus
+        texts = self.corpus.get_contents()
+        
+        # 1. Mã hóa toàn bộ text thành embeddings (Sử dụng model của SentenceTransformers hoặc tương tự)
+        embeddings = self.model.encode(texts, 
+                                       batch_size=self.batch_size, 
+                                       show_progress_bar=True)
+        embeddings = np.array(embeddings).astype("float32")
+        faiss.normalize_L2(embeddings) # Normalize để  dot product -> cosine similarity
+        
+        d = embeddings.shape[1] # Độ phân giải (dimension) của vector
+        
+        # 2. Khởi tạo Faiss Index theo Mode
+        if self.index_type == "flat":
+            # Inner Product (Cosine Similarity) - yêu cầu vector đã chuẩn hóa (normalized)
+            self.index = faiss.IndexFlatIP(d) 
+        elif self.index_type == "hnsw":
+            self.index = faiss.IndexHNSWFlat(d, self.M, faiss.METRIC_INNER_PRODUCT)
+            self.index.hnsw.efConstruction = self.ef_construction
+            self.index.hnsw.efSearch = self.ef_search
+        else:
+            raise ValueError(f"Unsupported index_type: {self.index_type}")
+        
+        # 3. Add dữ liệu vào Index
         self.index.add(embeddings)
 
-        self.doc_indices = (
-            documents.index.to_numpy()
-        )
-
     def forward(self, query: RetrievalQuery):
-
         if self.index is None:
-            raise RuntimeError(
-                "DenseRaw must be fitted first."
-            )
+            raise RuntimeError("DenseRaw must be fitted first.")
 
-        query_embedding = self.model.encode(
-            [query.content],
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-        )
+        # 1. Mã hóa câu truy vấn
+        # FAISS yêu cầu query phải có shape dạng 2D array: (1, vector_dimension)
+        query_embedding = self.model.encode([query.content])
+        query_embedding = np.array(query_embedding).astype("float32")
+        faiss.normalize_L2(query_embedding)
 
-        query_embedding = query_embedding.astype(np.float32)
+        # 2. Tìm kiếm trên FAISS
+        k = self.top_k or len(self.corpus.get_contents())
+        distances, indices = self.index.search(query_embedding, k)
+        
+        # Vì chỉ có 1 câu query nên ta lấy kết quả ở index [0]
+        dist_scores, idxs = distances[0], indices[0]
 
-        # Tính điểm giữa Query và Dataset
-        scores, indices = self.index.search(
-            query_embedding,
-            k = self.top_k or len(self.map.flatten_corpus)
-        )
+        # Lọc bỏ các chỉ mục -1 (Trường hợp FAISS không tìm đủ top_k neighbor)
+        valid_mask = idxs != -1
+        dist_scores = dist_scores[valid_mask]
+        idxs = idxs[valid_mask]
 
-        # Map lại score cho corpus (do Dense trả về top_k nên phần nào thiếu thì mặc định bằng 0)
-        full_scores = np.zeros(
-            len(self.map.flatten_corpus),
-            dtype=np.float32
-        )
-
-        full_scores[indices] = scores
-
-        self.map.scoring(full_scores)
-
-
-        # Tính lại điểm đại diện cho các Điểm (Article) dựa trên Leaf tốt nhất.
-        results: list = []
-        paths: list = []
-
-        for i, article in enumerate(self.map.get_root().child) :
-            sc, pt = self.map.max_leaf_score(article)
-
-            results.append(sc)
-            paths.append(pt) 
-
-        return pd.DataFrame({"dense_hier" : results,
-                             "dense_Comment" : paths}, 
-                            index=self.doc_indices)
+        # 3. Ghi nhận điểm số vào corpus và xuất kết quả
+        self.corpus.scoring(pd.Series(dist_scores, index=idxs))
+        
+        df = self.corpus.get_scoreboard()
+        return df.add_prefix(f"{self.name}_")

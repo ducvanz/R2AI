@@ -123,65 +123,155 @@ def restore_article(node) -> str:
 
 def parse_source_note(text: str) -> Dict[str, str]:
     """
-    Parse source_note_text.
+    Parse:
+        Điều xx ...
+        Tên văn bản ...
+        Mã văn bản ...
 
-    Example
-    -------
-    Input:
-        (Điều 8 Thông tư số 14/2020/TT-BKHĐT,
-         có hiệu lực thi hành kể từ ngày 25/02/2021)
+    Ví dụ:
+        Điều 8 Thông tư số 14 /2020/TT-BKHĐT,
+        có hiệu lực...
 
-    Output:
-        {
-            "docs_title":
-                "14/2020/TT-BKHĐT|Thông tư số 14/2020/TT-BKHĐT",
-            "article_index":
-                "Điều 8"
-        }
+    =>
+        article_index = Điều 8
+        docs_code    = 14/2020/TT-BKHĐT
+        docs_title   = Thông tư số 14/2020/TT-BKHĐT
     """
 
     if not text:
         return {
-            "docs_title": "",
-            "article_index": ""
+            "article_index": "",
+            "docs_code": "",
+            "docs_title": ""
         }
 
-    text = text.strip().strip("()")
+    # --------------------------------------------------
+    # 1. NORMALIZE
+    # --------------------------------------------------
+    def normalize(s: str) -> str:
+        s = s.strip().strip("()")
 
-    # chỉ lấy phần trước dấu phẩy đầu tiên
-    head = text.split(",", 1)[0].strip()
+        # nhiều khoảng trắng -> 1
+        s = re.sub(r"\s+", " ", s)
+
+        # 08 / 2017 / TT-BTNMT
+        # -> 08/2017/TT-BTNMT
+        s = re.sub(r"\s*/\s*", "/", s)
+
+        # NĐ - CP
+        # -> NĐ-CP
+        s = re.sub(r"\s*-\s*", "-", s)
+
+        # dấu phẩy
+        s = re.sub(r"\s*,\s*", ", ", s)
+
+        return s.strip()
+
+    # --------------------------------------------------
+    # 2. EXTRACT CODE
+    # --------------------------------------------------
+    def extract_code(s: str) -> Optional[re.Match]:
+
+        patterns = [
+
+            # 08/2017/TT-BTNMT
+            r"\d+/\d+/[A-ZĐ0-9\-]+(?:-[A-ZĐ0-9]+)*",
+
+            # 206/QĐ-TTg
+            r"\d+/[A-ZĐ0-9\-]+(?:-[A-ZĐ0-9]+)*",
+
+            # 23-L/CTN
+            r"\d+-[A-ZĐ]+/[A-ZĐ0-9]+",
+
+            # 370-HĐBT
+            r"\d+-[A-ZĐ]+"
+        ]
+
+        candidates = []
+
+        for pattern in patterns:
+            for match in re.finditer(
+                pattern,
+                s,
+                re.IGNORECASE
+            ):
+
+                value = match.group(0)
+
+                # bỏ ngày tháng
+                if re.fullmatch(
+                    r"\d{1,2}/\d{1,2}/\d{4}",
+                    value
+                ):
+                    continue
+
+                candidates.append(match)
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda x: x.start()
+        )
+
+        return candidates[0]
+
+    # --------------------------------------------------
+    # 3. EXTRACT TITLE
+    # --------------------------------------------------
+    def extract_title(s: str, code_match: re.Match) -> str:
+
+        title = s[:code_match.end()]
+
+        title = title.strip(" ,.")
+
+        return title
+
+    # ==================================================
+    # PIPELINE
+    # ==================================================
+
+    text = normalize(text)
 
     article_match = re.search(
         r"Điều\s+\d+[A-Za-z]*",
-        head
+        text,
+        re.IGNORECASE
     )
 
     if not article_match:
         return {
-            "docs_title": "",
-            "article_index": ""
+            "article_index": "",
+            "docs_code": "",
+            "docs_title": ""
         }
 
     article_index = article_match.group(0)
 
-    doc_title = head[article_match.end():].strip()
+    remain = text[
+        article_match.end():
+    ].strip()
 
-    code_match = re.search(
-        r"\d+/\d+/[^\s,]+",
-        doc_title
+    code_match = extract_code(remain)
+
+    if code_match is None:
+        return {
+            "article_index": article_index,
+            "docs_code": "",
+            "docs_title": ""
+        }
+
+    docs_code = code_match.group(0).upper()
+
+    docs_title = extract_title(
+        remain,
+        code_match
     )
 
-    docs_title = ""
-
-    if code_match:
-        doc_code = code_match.group(0)
-        docs_title = f"{doc_code}|{doc_title}"
-    else:
-        docs_title = doc_title
-
     return {
-        "docs_title": docs_title,
-        "article_index": article_index
+        "article_index": article_index,
+        "docs_code": docs_code,
+        "docs_title": docs_title
     }
 
 
@@ -189,7 +279,7 @@ def parse_source_note(text: str) -> Dict[str, str]:
 # Pre-process full pipeline
 # -----------------------
 
-def preProcess(raw: pd.DataFrame, save_path: str=None) -> pd.DataFrame :
+def preProcess(raw: pd.DataFrame, save_path: str=None, fix_path: str=None) -> pd.DataFrame :
     """
     Đọc thông tin từ dataset.
     Thực hiện extract metadata từ cột `source_note_text`.
@@ -209,47 +299,44 @@ def preProcess(raw: pd.DataFrame, save_path: str=None) -> pd.DataFrame :
                                                                 len(x.get('content', []))
                                                                 )
 
-    final['metadata'] = final['docs_title'] + '|' + final['article_index']
+    final = final[['docs_code', 'docs_title', 'article_index', 'article_title', 'source_note_text', 'source_links', 'topic_title', 'subject_title', 'content_text', 'content_word_count', 'content_clause_count']]
 
-    final = final.drop(columns="source_note_text")
+    if fix_path is not None:
+        fix_df = pd.read_csv(fix_path, index_col=0)
+        fix_df["content_text"] = (
+            fix_df["content_text"]
+            .apply(json.loads)
+        )
+        final.update(fix_df)
+        print(f"Update {len(fix_df)} samples thủ công.")
 
     if save_path is not None:
         save(final, save_path)
 
     return final
 
-
 # -----------------------
 # I/O
 # -----------------------
 
-def load_parquet(parquet_path: str,
-                          columns = ["topic_title",
-                                     "subject_title",
-                                     "article_title",
-                                     "content_text",
-                                     "content_word_count",
-                                     "source_note_text"] ) -> pd.DataFrame:
+def load_parquet(parquet_path: str) -> pd.DataFrame:
     """
     Đọc file parquet và chỉ giữ lại các cột cần thiết.
     """
 
-    df = pd.read_parquet(parquet_path)
-
-    # Chỉ giữ các cột tồn tại trong file
-    available_cols = [c for c in columns if c in df.columns]
-
-    return df[available_cols].copy()
+    return pd.read_parquet(parquet_path)
 
 def save(df: pd.DataFrame, file_path:str) -> None : 
     df['content_text'] = df['content_text'].apply(
-        lambda x: json.dumps(
-            x,
-            ensure_ascii=False
-        )
+        json.dumps
     )
 
-    df.to_parquet(file_path)
+    if file_path.endswith('parquet') :
+        df.to_parquet(file_path)
+    elif file_path.endswith('csv') :
+        df.to_csv(file_path)
+    else :
+        df.to_json(file_path)
 
     print(f"Đã lưu dữ liệu vào {file_path}")
 

@@ -2,24 +2,94 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 import pandas as pd
+import numpy as np
 
+# -----------------------
+# Single Entities
+# -----------------------
+
+@dataclass
+class RetrievalQuery:
+    content: str        # Câu hỏi
 
 class NodeType(IntEnum):
-    ROOT = 1          # Dataset
-    ARTICLE = 2       # Điều
-    CLAUSE = 3        # Khoản
-    POINT = 4         # Điểm
+    PSEUDO = 0
+    ARTICLE = 1       # Điều
+    CLAUSE = 2        # Khoản
+    POINT = 3         # Điểm
 
 @dataclass 
 class Node:
-    # text: str = field(default_factory=None)
+    # text: str = field(default_factory=str)
     level: NodeType
     flat_index: int
     child: list[Node] = field(default_factory=list)
 
+# -----------------------
+# Knowledge Base + Scoring Organization
+# -----------------------
 
-@dataclass
-class HierarchicalCorpus:
+class Corpus() :
+    def __init__(self, data:pd.Series = None) :
+        self.articles: list[Node] = None
+        self.flat_texts: list[str] = None
+        self.flat_scores: pd.Series = None
+
+        if data is not None:
+            self.fit(data)
+
+    def fit(self, data:pd.Series):
+        self.flat_texts = []
+        self.articles = []
+
+        from .preprocess_parquet import restore_article
+        for i, obj in enumerate(data):
+            text = restore_article(obj)
+            self.articles.append(Node(
+                level = NodeType.ARTICLE,
+                flat_index = len(self.flat_texts),
+                child = None
+            ))
+            self.flat_texts.append(text)
+
+    def get_contents(self) :
+        if self.flat_texts is None:
+            raise RuntimeError(
+                "Bắt buộc phải `fit` trước để được hỗ trợ `get_contents`."
+            )
+
+        return self.flat_texts
+
+    def get_structure(self) -> list[Node]:
+        if self.articles is None:
+            raise RuntimeError(
+                "Bắt buộc phải `fit` trước để được hỗ trợ `get_structures`."
+            )
+        
+        return self.articles
+
+    def scoring(self, scores:pd.Series):
+        """
+        Gán score để tra cứu cụ thể sau. 
+        Lưu ý: scores được đánh index đúng theo thứ tự ban đầu khi fit.
+        """
+        self.flat_scores = scores
+        self.min_penalty = scores.min()
+
+    def get_score(self, article: Node) -> float | None:
+        if self.flat_scores is None:
+            raise RuntimeError(
+                "Bắt buộc phải `scoring` trước để được hỗ trợ `get_score`."
+            )
+        
+        return self.flat_scores.get(article.flat_index)
+
+    def get_scoreboard(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            'score': [self.get_score(x) for x in self.articles]
+            })
+
+class HierarchicalCorpus(Corpus):
     """
     Mapping giữa:
 
@@ -33,16 +103,18 @@ class HierarchicalCorpus:
     Không lưu text sau khi fit().
     """
 
-    tree_root: Node = field(
-        default_factory=lambda:
-            Node(level=NodeType.ROOT, flat_index=None)
-    )
+    def __init__(self, title_blending:bool=True, alpha:float=0.5, data:pd.Series = None) :
+        self.articles: list[Node] = None
+        self.flat_texts: list[str] = None
+        self.flat_scores: pd.Series = None
 
-    flatten_corpus: list[Node] = field(default_factory=list)
+        self.title_blending = title_blending
+        self.alpha = alpha
 
-    flatten_scores: list[float] = field(default_factory=list)
+        if data is not None:
+            self.fit(data)
 
-    def fit(self, corpus: pd.Series, title_include:bool = True) -> list[str]:
+    def fit(self, corpus: pd.Series) -> list[str]:
         """
         Build mapping cho toàn bộ corpus.
 
@@ -62,16 +134,17 @@ class HierarchicalCorpus:
         """ 
 
         # Reset
-        self.tree_root = Node(level=NodeType.ROOT, flat_index=None)
-        self.flatten_corpus = []
-        flat_texts = []
+        self.flat_texts = []
+        ROOT = Node(level=NodeType.PSEUDO,
+                    flat_index=None)
+
 
         def _append_node(text:str, parent:Node, level:NodeType) -> Node:
 
             if text != "" :
-                this = Node(level=level, flat_index=len(flat_texts))
-                flat_texts.append(text)
-                self.flatten_corpus.append(this)
+                this = Node(level=level, flat_index=len(self.flat_texts))
+                self.flat_texts.append(text)
+                # self.leaves.append(this)
             else :
                 this = Node(level=level, flat_index=None)
 
@@ -79,64 +152,89 @@ class HierarchicalCorpus:
 
             return this
 
-        def _append_tree(obj:dict, parent:Node, level:NodeType):
+        def _append_tree(obj:dict, parent:Node, level:NodeType, prefix:str = ""):
             has_children = (
                 "content" in obj
                 and isinstance(obj["content"], list)
             )
 
             if not has_children:
-                text = obj.get('text', "") 
+                text = "\n".join(filter( None, [prefix, obj['text']] ))
                 _append_node(text, parent, level)
-            else :
-                text = obj.get('title') if title_include else ""
-                this = _append_node(text, parent, level)
 
-                children = obj.get('content', [])
-                for child in children :
-                    _append_tree(child, this, level=level+1)
+            else :
+                text = "\n".join(filter( None, [prefix, obj['title']] )) 
+
+                if self.title_blending :
+                    this = _append_node("", parent, level)
+                    children = obj.get('content', [])
+                    for obj in children :
+                        _append_tree(obj, this, level+1, text)
+                else :
+                    this = _append_node(text, parent, level)
+                    children = obj.get('content', [])
+                    for obj in children :
+                        _append_tree(obj, this, level+1, "")
                 
         for i, obj in enumerate(corpus):
-            _append_tree(obj, self.tree_root, NodeType.ARTICLE)
+            if not isinstance(obj, dict):
+                print(i)
+                print(type(obj))
+                print(obj)
+                raise RuntimeError()
+            else :
+                _append_tree(obj, ROOT, NodeType.ARTICLE)
 
-        return flat_texts
-
-    def get_root(self) -> Node:
-        return self.tree_root
-    
-    def scoring(self, scores:list[float]):
-        if len(scores) != len(self.flatten_corpus) :
-            raise RuntimeError(
-                "Score được nạp vào phải có kích thước tương đương Corpus được fit ban đầu." \
-                "Hoặc bạn chưa fit corpus."
-            )
+        # pd.DataFrame({'text' : self.flat_texts}).to_csv('results/flattens.csv', index=False)
         
-        self.flatten_scores = scores
-
-    def get_score(self, n : Node) -> float:
-        if self.flatten_scores is None:
+        self.articles = ROOT.child
+    
+    def get_score(self, article:Node):
+        if self.flat_scores is None:
             raise RuntimeError(
                 "Bắt buộc phải `scoring` trước để được hỗ trợ `get_score`."
             )
-        i = n.flat_index
-        if i is None:
-            return None
+
+        def _nested_score(parent:Node) -> tuple[float, float, list[int]] :
+            if not parent.child:
+                leaf_score = super(HierarchicalCorpus, self).get_score(parent)
+                return leaf_score, leaf_score, []
+            else :
+                score_board = []
+                penalty = 0
+
+                for idx, child in enumerate(parent.child):
+                    mean, max, path = _nested_score(child)
+                    if mean is not None:
+                        score_board.append([idx+1, mean, max, path])
+                    else:
+                        penalty += 1
+
+                if not score_board:
+                    return None, None, []
+
+                child_score = [item[1] for item in score_board]
+                if penalty > 0 :
+                    child_score = [self.min_penalty / penalty] * penalty + child_score
+                mean = np.mean(child_score)
+                
+                max_item = score_board[np.argmax([item[2] for item in score_board])]
+                max = max_item[2]
+                path = [max_item[0]] + max_item[3]
+
+                return mean, max, path
+
+        mean, max, path = _nested_score(article)
         
-        return self.flatten_scores[i]
-    
-    def max_leaf_score(self, parent:Node):
-        if not parent.child :
-            return self.get_score(parent), []
-            
-        score = 0
-        path = []
+        if not mean:
+            return None, []
+        else :
+            return mean * self.alpha + max * (1-self.alpha), path
+        
+    def get_scoreboard(self) -> pd.DataFrame:
+        results = [self.get_score(x) for x in self.articles]
 
-        for idx, child in enumerate(parent.child) :
-            s, p = self.max_leaf_score(child)
-            if (s is not None) and (s > score):
-                score = s
-                # print(f"Path: {idx}|{p}")
-                path = [idx+1]
-                path.extend(p)
-
-        return score, path
+        return pd.DataFrame({
+            'score':   [x[0] for x in results],
+            'comment': [x[1] for x in results]
+            })
