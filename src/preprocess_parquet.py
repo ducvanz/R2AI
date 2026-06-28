@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import re
 from typing import Dict, List, Any, Union, Optional
 import json
@@ -121,6 +122,7 @@ def restore_article(node) -> str:
 
     return "\n".join(parts)
 
+
 def parse_source_note(text: str) -> Dict[str, str]:
     """
     Parse:
@@ -129,11 +131,12 @@ def parse_source_note(text: str) -> Dict[str, str]:
         Mã văn bản ...
 
     Ví dụ:
-        Điều 8 Thông tư số 14 /2020/TT-BKHĐT,
+        Điều 8 Thông tư số 14/2020/TT-BKHĐT,
         có hiệu lực...
 
     =>
         article_index = Điều 8
+        legal_type   = Thông tư
         docs_code    = 14/2020/TT-BKHĐT
         docs_title   = Thông tư số 14/2020/TT-BKHĐT
     """
@@ -141,6 +144,7 @@ def parse_source_note(text: str) -> Dict[str, str]:
     if not text:
         return {
             "article_index": "",
+            "legal_type": "",
             "docs_code": "",
             "docs_title": ""
         }
@@ -173,7 +177,6 @@ def parse_source_note(text: str) -> Dict[str, str]:
     def extract_code(s: str) -> Optional[re.Match]:
 
         patterns = [
-
             # 08/2017/TT-BTNMT
             r"\d+/\d+/[A-ZĐ0-9\-]+(?:-[A-ZĐ0-9]+)*",
 
@@ -222,10 +225,25 @@ def parse_source_note(text: str) -> Dict[str, str]:
     def extract_title(s: str, code_match: re.Match) -> str:
 
         title = s[:code_match.end()]
-
         title = title.strip(" ,.")
 
         return title
+
+    # --------------------------------------------------
+    # 4. EXTRACT LEGAL TYPE
+    # --------------------------------------------------
+    def extract_legal_type(s: str, code_match: re.Match) -> str:
+        # Lấy phần chuỗi nằm ngay trước docs_code
+        prefix = s[:code_match.start()].strip(" ,.")
+        
+        # Cắt bỏ chữ "số" (nếu có) ở cuối phần prefix, không phân biệt hoa thường
+        legal_type = re.sub(r"(?i)\s+số\s*$", "", prefix).strip()
+        
+        # Viết hoa chữ cái đầu tiên (hàm capitalize() tự động viết hoa chữ đầu và viết thường phần còn lại)
+        if legal_type:
+            return legal_type.capitalize()
+            
+        return ""
 
     # ==================================================
     # PIPELINE
@@ -242,6 +260,7 @@ def parse_source_note(text: str) -> Dict[str, str]:
     if not article_match:
         return {
             "article_index": "",
+            "legal_type": "",
             "docs_code": "",
             "docs_title": ""
         }
@@ -257,6 +276,7 @@ def parse_source_note(text: str) -> Dict[str, str]:
     if code_match is None:
         return {
             "article_index": article_index,
+            "legal_type": "",
             "docs_code": "",
             "docs_title": ""
         }
@@ -267,85 +287,95 @@ def parse_source_note(text: str) -> Dict[str, str]:
         remain,
         code_match
     )
+    
+    legal_type = extract_legal_type(
+        remain,
+        code_match
+    )
 
     return {
         "article_index": article_index,
+        "legal_type": legal_type,
         "docs_code": docs_code,
         "docs_title": docs_title
     }
 
 
 # -----------------------
-# Pre-process full pipeline
+# Save & Load with json dumps
 # -----------------------
 
-def preProcess(raw: pd.DataFrame, save_path: str=None, fix_path: str=None) -> pd.DataFrame :
-    """
-    Đọc thông tin từ dataset.
-    Thực hiện extract metadata từ cột `source_note_text`.
-    Thực hiện parse (phân nhỏ) nội dung các Điều `content_text`.
-    """
-    metadata = (raw["source_note_text"]
-                .apply(parse_source_note)
-                .apply(pd.Series))
+def save(df: pd.DataFrame, file_path: str) -> None: 
     
-    final = pd.concat(
-        [raw, metadata],
-        axis=1
-    )
+    # Tạo bản sao để không làm hỏng cấu trúc object của df gốc
+    df_to_save = df.copy()
 
-    final['content_text'] = final['content_text'].apply(parse_article)
-    final['content_clause_count'] = final['content_text'].apply(lambda x: 
-                                                                len(x.get('content', []))
-                                                                )
+    # Hàm helper chuyển đổi sang JSON an toàn, tránh lỗi pd.notna trên list/array
+    def safe_dump(x):
+        # Nếu đã là list, dict, tuple -> dump ra string
+        if isinstance(x, (list, dict, tuple)):
+            return json.dumps(x, ensure_ascii=False)
+        # Nếu là string -> giữ nguyên (tránh bị dump 2 lần thành '"chuỗi"')
+        if isinstance(x, str):
+            return x
+        # Check null/NaN an toàn (dùng pd.api.types.is_scalar để chặn list/array)
+        if pd.api.types.is_scalar(x) and pd.isna(x):
+            return None
+        # Nếu vô tình là numpy array
+        if isinstance(x, np.ndarray):
+            return json.dumps(x.tolist(), ensure_ascii=False)
+        # Các trường hợp còn lại
+        return json.dumps(x, ensure_ascii=False)
 
-    final = final[['docs_code', 'docs_title', 'article_index', 'article_title', 'source_note_text', 'source_links', 'topic_title', 'subject_title', 'content_text', 'content_word_count', 'content_clause_count']]
+    # Xử lý content_text
+    if 'content_text' in df_to_save.columns:
+        df_to_save['content_text'] = df_to_save['content_text'].apply(safe_dump)
 
-    if fix_path is not None:
-        fix_df = pd.read_csv(fix_path, index_col=0)
-        fix_df["content_text"] = (
-            fix_df["content_text"]
-            .apply(json.loads)
-        )
-        final.update(fix_df)
-        print(f"Update {len(fix_df)} samples thủ công.")
+    # Xử lý references nếu có tồn tại
+    if 'references' in df_to_save.columns:
+        df_to_save['references'] = df_to_save['references'].apply(safe_dump)
 
-    if save_path is not None:
-        save(final, save_path)
-
-    return final
-
-# -----------------------
-# I/O
-# -----------------------
-
-def load_parquet(parquet_path: str) -> pd.DataFrame:
-    """
-    Đọc file parquet và chỉ giữ lại các cột cần thiết.
-    """
-
-    return pd.read_parquet(parquet_path)
-
-def save(df: pd.DataFrame, file_path:str) -> None : 
-    df['content_text'] = df['content_text'].apply(
-        json.dumps
-    )
-
-    if file_path.endswith('parquet') :
-        df.to_parquet(file_path)
-    elif file_path.endswith('csv') :
-        df.to_csv(file_path)
-    else :
-        df.to_json(file_path)
+    # Lưu file
+    if file_path.endswith('parquet'):
+        df_to_save.to_parquet(file_path)
+    elif file_path.endswith('csv'):
+        # Lưu CSV nên bỏ index để lúc load không bị dư cột Unnamed: 0
+        df_to_save.to_csv(file_path, index=False) 
+    else:
+        df_to_save.to_json(file_path, orient='records', force_ascii=False)
 
     print(f"Đã lưu dữ liệu vào {file_path}")
 
-def load(file_path:str) -> pd.DataFrame :
-    df = pd.read_parquet(file_path)
 
-    df["content_text"] = (
-        df["content_text"]
-        .apply(json.loads)
-    )
+def load(file_path: str) -> pd.DataFrame:
+    # Hỗ trợ load theo đúng định dạng đã lưu
+    if file_path.endswith('parquet'):
+        df = pd.read_parquet(file_path)
+    elif file_path.endswith('csv'):
+        df = pd.read_csv(file_path)
+    else:
+        df = pd.read_json(file_path)
+
+    # Hàm helper load từ JSON string một cách an toàn
+    def safe_load(x):
+        # File Parquet có thể tự động giữ nguyên định dạng list/dict, nếu thế thì khỏi cần load
+        if isinstance(x, (list, dict, tuple)):
+            return x
+        # Chỉ parse JSON nếu x là chuỗi
+        if isinstance(x, str):
+            try:
+                return json.loads(x)
+            except (json.JSONDecodeError, TypeError):
+                # Nếu chuỗi không phải là chuẩn JSON, trả về nguyên bản chuỗi đó
+                return x
+        return x
+
+    # Load lại cấu trúc object cho content_text
+    if "content_text" in df.columns:
+        df["content_text"] = df["content_text"].apply(safe_load)
+
+    # Load lại cấu trúc object cho references nếu có
+    if "references" in df.columns:
+        df["references"] = df["references"].apply(safe_load)
 
     return df

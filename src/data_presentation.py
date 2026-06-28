@@ -30,21 +30,24 @@ class Node:
 # -----------------------
 
 class Corpus() :
-    def __init__(self, data:pd.Series = None) :
+    def __init__(self, prefix:pd.Series = None, data:pd.Series = None) :
         self.articles: list[Node] = None
         self.flat_texts: list[str] = None
         self.flat_scores: pd.Series = None
 
         if data is not None:
-            self.fit(data)
+            self.fit(data, prefix)
 
-    def fit(self, data:pd.Series):
+    def fit(self, data:pd.Series, prefix:pd.Series = None):
         self.flat_texts = []
         self.articles = []
 
         from .preprocess_parquet import restore_article
         for i, obj in enumerate(data):
             text = restore_article(obj)
+            if prefix is not None :
+                text = " ".join(prefix.iloc[i], text)
+
             self.articles.append(Node(
                 level = NodeType.ARTICLE,
                 flat_index = len(self.flat_texts),
@@ -103,7 +106,7 @@ class HierarchicalCorpus(Corpus):
     Không lưu text sau khi fit().
     """
 
-    def __init__(self, title_blending:bool=True, alpha:float=0.5, data:pd.Series = None) :
+    def __init__(self, title_blending:bool=True, alpha:float=0.5, prefix:pd.Series = None, data:pd.Series = None) :
         self.articles: list[Node] = None
         self.flat_texts: list[str] = None
         self.flat_scores: pd.Series = None
@@ -112,9 +115,9 @@ class HierarchicalCorpus(Corpus):
         self.alpha = alpha
 
         if data is not None:
-            self.fit(data)
+            self.fit(data, prefix)
 
-    def fit(self, corpus: pd.Series) -> list[str]:
+    def fit(self, corpus: pd.Series, prefix:pd.Series = None) -> list[str]:
         """
         Build mapping cho toàn bộ corpus.
 
@@ -183,7 +186,8 @@ class HierarchicalCorpus(Corpus):
                 print(obj)
                 raise RuntimeError()
             else :
-                _append_tree(obj, ROOT, NodeType.ARTICLE)
+                _append_tree(obj, ROOT, NodeType.ARTICLE,
+                             prefix = prefix.iloc[i] if prefix is not None else "")
 
         # pd.DataFrame({'text' : self.flat_texts}).to_csv('results/flattens.csv', index=False)
         

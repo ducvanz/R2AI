@@ -1,9 +1,12 @@
 from .retrieval_pipeline import RecallRetrieval
 from .data_presentation import Corpus, RetrievalQuery
+import os
+import json
 import pandas as pd
 import numpy as np
 import bm25s
 import faiss
+from underthesea import word_tokenize
 
 
 # -----------------------
@@ -12,34 +15,42 @@ import faiss
 
 class BM25(RecallRetrieval):
 
-    def __init__(self, corpus:Corpus, top_k: int = None, norm: float = 0.75, name="BM25"):
+    def __init__(self, corpus: Corpus, top_k: int = None, norm: float = 0.75, name="BM25", use_segmentation: bool = False):
         self.corpus = corpus
         self.name = name
 
         self.top_k = top_k
         self.norm = norm
+        self.use_segmentation = use_segmentation # Khởi tạo cờ đánh dấu
 
         self.bm25 = None
 
     def fit(self):
         texts = [text.lower() for text in self.corpus.get_contents()]
 
+        # Áp dụng Word Segmentation nếu được bật
+        if self.use_segmentation:
+            print(f"[INFO] {self.name} đang thực hiện Word Segmentation trên Corpus...")
+            # format="text" sẽ trả về chuỗi với các từ ghép được nối bằng gạch dưới '_'
+            texts = [word_tokenize(text, format="text") for text in texts]
+
+        # Tokenize bằng bm25s (nó sẽ cắt theo khoảng trắng, giữ nguyên các cụm có '_')
         tokenized = bm25s.tokenize(texts)
 
         self.bm25 = bm25s.BM25(b=self.norm)
-
         self.bm25.index(tokenized)     
 
     def forward(self, query: RetrievalQuery):
-
         if self.bm25 is None:
-            raise RuntimeError(
-                "BM25Raw must be fitted first."
-            )
+            raise RuntimeError("BM25 phải được fit() trước khi forward.")
 
-        query_tokens = bm25s.tokenize(
-            [query.content.lower()]
-        )
+        query_content = query.content.lower()
+
+        # Áp dụng cấu hình phân tách từ tương tự như lúc fit Corpus
+        if self.use_segmentation:
+            query_content = word_tokenize(query_content, format="text")
+
+        query_tokens = bm25s.tokenize([query_content])
 
         results, scores = self.bm25.retrieve(
             query_tokens,
@@ -53,7 +64,46 @@ class BM25(RecallRetrieval):
         df = self.corpus.get_scoreboard()
         return df.add_prefix(f"{self.name}_")
 
+    def save(self, folder: str):
+        """Lưu cấu hình và dữ liệu của BM25."""
+        os.makedirs(folder, exist_ok=True)
+        
+        # 1. Lưu Metadata (Bao gồm cả cấu hình segmentation)
+        metadata = {
+            "name": self.name,
+            "top_k": self.top_k,
+            "norm": self.norm,
+            "use_segmentation": self.use_segmentation
+        }
+        with open(os.path.join(folder, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4)
+        
+        # 2. Lưu Core Index
+        if self.bm25 is not None:
+            self.bm25.save(os.path.join(folder, "index"))
+        else:
+            print(f"[WARNING] {self.name} chưa được fit, chỉ lưu metadata.")
 
+    def load(self, folder: str):
+        """Khôi phục cấu hình và dữ liệu của BM25."""
+        # 1. Load Metadata
+        config_path = os.path.join(folder, "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                self.name = metadata.get("name", self.name)
+                self.top_k = metadata.get("top_k", self.top_k)
+                self.norm = metadata.get("norm", self.norm)
+                # Đọc lại trạng thái segmentation để áp dụng cho query sau này
+                self.use_segmentation = metadata.get("use_segmentation", self.use_segmentation)
+        
+        # 2. Load Core Index
+        index_dir = os.path.join(folder, "index")
+        if os.path.exists(index_dir):
+            self.bm25 = bm25s.BM25.load(index_dir, load_corpus=False)
+        else:
+            raise FileNotFoundError(f"Không tìm thấy dữ liệu BM25 tại: {index_dir}")
+        
 # -----------------------
 # Dense Retrieval
 # -----------------------
@@ -175,3 +225,51 @@ class Dense(RecallRetrieval):
         
         df = self.corpus.get_scoreboard()
         return df.add_prefix(f"{self.name}_")
+    
+    def save(self, folder: str):
+        """Lưu cấu hình và file FAISS của Dense Retriever."""
+        # Tự động tạo thư mục nếu chưa tồn tại
+        os.makedirs(folder, exist_ok=True)
+        
+        # 1. Lưu Metadata
+        metadata = {
+            "name": self.name,
+            "top_k": self.top_k,
+            "index_type": self.index_type,
+            "batch_size": self.batch_size,
+            "M": self.M,
+            "ef_construction": self.ef_construction,
+            "ef_search": self.ef_search
+        }
+        with open(os.path.join(folder, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=4)
+        
+        # 2. Lưu Core Index
+        if self.index is not None:
+            index_path = os.path.join(folder, "faiss_index.bin")
+            faiss.write_index(self.index, index_path)
+        else:
+            print(f"[WARNING] {self.name} chưa được fit, chỉ lưu metadata.")
+
+    def load(self, folder: str):
+        """Khôi phục cấu hình và file FAISS của Dense Retriever."""
+        # 1. Load Metadata
+        config_path = os.path.join(folder, "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                self.name = metadata.get("name", self.name)
+                self.top_k = metadata.get("top_k", self.top_k)
+                self.index_type = metadata.get("index_type", self.index_type)
+                self.batch_size = metadata.get("batch_size", self.batch_size)
+                self.M = metadata.get("M", self.M)
+                self.ef_construction = metadata.get("ef_construction", self.ef_construction)
+                self.ef_search = metadata.get("ef_search", self.ef_search)
+        
+        # 2. Load Core Index
+        index_path = os.path.join(folder, "faiss_index.bin")
+        if os.path.exists(index_path):
+            self.index = faiss.read_index(index_path)
+        else:
+            raise FileNotFoundError(f"Không tìm thấy FAISS index tại: {index_path}")
+
