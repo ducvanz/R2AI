@@ -50,6 +50,7 @@ class RetrievalPipeline:
     def __init__(self,
                  data: pd.Series,
                  data_prefix: pd.Series = None,
+                 HyDE = None,
                  recallLayers: list[RecallRetrieval] = None,
                  fusion_target: dict[str, float] = None, fusion_norm: int = 60,
                  precisionLayers: list[PrecisionRetrieval] = None,
@@ -59,6 +60,9 @@ class RetrievalPipeline:
         
         self.data: pd.Series = data
         self.data_prefix: pd.Series = data_prefix
+
+        self.hyde = HyDE
+
         self.recallLayers: list[RecallRetrieval] = recallLayers
 
         self.fusion_target:dict[str, float] = fusion_target 
@@ -89,7 +93,7 @@ class RetrievalPipeline:
             torch.cuda.empty_cache()
         else :
             print(f"[INFO] Đang load saved models cho lớp Recall Retrievers")
-            for layer in self.recallLayers :
+            for idx, layer in enumerate(self.recallLayers) :
                 print(f"[INFO] [{idx+1}/{len(self.recallLayers)}] Đang load {type(layer)}")
                 layer.load(save_folder + f"/{layer.name}")
 
@@ -99,6 +103,9 @@ class RetrievalPipeline:
 
 
     def retrieve(self, query: str) -> pd.DataFrame:
+
+        if self.hyde is not None:
+            query = self.hyde.enhance(query)
 
         query = RetrievalQuery(
             content = query
