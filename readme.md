@@ -130,6 +130,7 @@ Dự án được xây dựng dựa trên các công cụ và thư viện mã ng
   * `transformers` (bao gồm `Sentence Transformers`, `Cross Encoder`, `AutoTokenizer`): Thư viện lõi từ Hugging Face phục vụ cho việc nhúng từ và chạy reranker.
   * `llama-cpp-python`: Hỗ trợ chạy các mô hình ngôn ngữ lớn (LLM) định dạng GGUF tối ưu hóa trên khi chạy trên Kaggle.
   * `bm25s`: Triển khai thuật toán tìm kiếm từ khóa BM25.
+  * `underthesea`: Triển khai Words Segmentation trên corpus trước khi tạo BM25 Index.
   * `FAISS`: Thư viện tìm kiếm vector tương đồng mật độ cao cực nhanh của Meta.
 
 * Cùng một số dependencies nhỏ khác. Như `re` (xử lý regex/ string pattern), `ABC` (viết interfaces),... 
@@ -141,9 +142,9 @@ Hệ thống RAG sử dụng các mô hình pre-trained chuyên biệt để đ�
 
 1. **Bi-Encoder (Recall/Dense Retrieval)**: `"keepitreal/vietnamese-sbert"`
    * Dùng để chuyển đổi các đoạn văn bản (chunks/provisions) thành vector nhúng nhằm thực hiện tìm kiếm ngữ nghĩa sơ bộ.
-2. **Reranker (Precision Reranking)**: `"BAAI/bge-reranker-v2-m3"`
+2. **Reranker (Precision/Reranking)**: `"BAAI/bge-reranker-v2-m3"`
    * Mô hình Cross-Encoder đa ngôn ngữ mạnh mẽ, dùng để chấm điểm độ liên quan trực tiếp giữa câu hỏi và danh sách văn bản gợi ý từ Recall layer.
-3. **LLM cho HyDE (Hypothetical Document Embeddings)**: `Qwen 7B`
+3. **LLM cho HyDE (Hypothetical Document Embeddings)**: `"Qwen 7B"`
    * Sử dụng để sinh ra văn bản giả định từ câu hỏi gốc của người dùng nhằm tăng độ phủ (recall) khi tìm kiếm ngữ nghĩa.
 4. **LLM Generator (Sinh câu trả lời QA)**: `N/A`
 
