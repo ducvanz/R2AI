@@ -150,6 +150,6 @@ Hệ thống RAG sử dụng các mô hình pre-trained chuyên biệt để đ�
 --- 
 
 ## 🤖 Thành viên tham gia (Contributors):
-1. [Nguyễn Văn Thịnh](github.com/TNoLisme): Module QA sau khi retrieval hoàn tất (nếu có :v).
-2. [Mai Đức Văn](github.com/ducvanz): Thiết kế pipeline và all-in LLM.
-3. [Nguyễn Trường Sơn](github.com/Nostagi): xách nước bổ cam.
+1. [Văn Thịnh](https://github.com/TNoLisme): Module QA sau khi retrieval hoàn tất (nếu có :v).
+2. [Mai Đức Văn](https://github.com/ducvanz): Thiết kế pipeline và all-in LLM.
+3. [Nguyễn Sơn](https://github.com/Nostagi): xách nước bổ cam.
