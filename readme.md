@@ -58,13 +58,13 @@ Mô hình phân bổ mã nguồn và dữ liệu thực tế trong project (đã
 ├── results/                # Kết quả thực nghiệm và đánh giá pipeline
 │   └── runs/                   # Lưu tạm kết quả đầu ra
 │
-├── saved_model/            # Lưu trữ các mô hình và chỉ mục tìm kiếm cục bộ
+├── saved_model/            # Lưu trữ các mô hình và chỉ mục tìm kiếm (BM25 & Dense)
 │   ├── phapdien/               # Cơ sở dữ liệu và chỉ mục cho Bộ Pháp điển
 │   └── vbpl/                   # Cơ sở dữ liệu và chỉ mục cho Văn bản Pháp luật (VBPL)
 │    
 └── src/                        # Mã nguồn triển khai các mô hình và pipeline
     ├── preprocess_parquet.py      # Tiền xử lý dữ liệu sang định dạng Parquet
-    ├── data_presentation.py       # Các hàm hiển thị và format kết quả
+    ├── data_presentation.py       # Module quản lý Corpus/Knowledge Base và ánh xạ article sang điểm đánh giá.
     ├── recall_retriever.py        # Module tìm kiếm sơ bộ (Recall Retrieval: BM25 & Dense)
     ├── precision_retriever.py     # Module tái xếp hạng độ chính xác cao (Precision Reranking & HyDE)
     ├── retrieval_pipeline.py      # Pipeline tích hợp
@@ -89,7 +89,7 @@ Hoặc cài đặt thủ công theo từng nhóm công cụ chính dưới đây
 pip install pandas numpy beautifulsoup4 lxml fastparquet pyarrow
 
 # Học máy và Tìm kiếm thông tin
-pip install torch transformers sentence-transformers rank-bm25 faiss-cpu
+pip install torch transformers sentence-transformers rank-bm25 faiss-cpu underthesea
 
 # LLM local và Tiện ích khác
 pip install llama-cpp-python tqdm ipykernel
@@ -98,6 +98,7 @@ pip install llama-cpp-python tqdm ipykernel
 > [!NOTE]
 > * Chi tiết về các module mã nguồn trong `src/` và cách sử dụng các lớp/hàm được mô tả cụ thể trong [src/README.md](src/README.md).
 > * Chi tiết về cấu trúc dữ liệu thô, dữ liệu sau cào và các bước xử lý dữ liệu trong `data/` được mô tả cụ thể trong [data/README.md](data/README.md).
+> * Cách sử dụng và chạy source code của pipeline chính tham khảo Jupyter Notebook [Retrieval_pipeline](./Test_Retrieval_pipeline.ipynb)
 
 ---
 
@@ -133,7 +134,7 @@ Dự án được xây dựng dựa trên các công cụ và thư viện mã ng
   * `underthesea`: Triển khai Words Segmentation trên corpus trước khi tạo BM25 Index.
   * `FAISS`: Thư viện tìm kiếm vector tương đồng mật độ cao cực nhanh của Meta.
 
-* Cùng một số dependencies nhỏ khác. Như `re` (xử lý regex/ string pattern), `ABC` (viết interfaces),... 
+* Cùng một số dependencies phụ trợ khác. Như `re` (xử lý regex/ string pattern), `ABC` (viết interfaces),... 
 ---
 
 ## 🤖 Các mô hình ngôn ngữ & Nhúng đã sử dụng (Models Used)
